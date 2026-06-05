@@ -1,0 +1,36 @@
+body { font-family: system-ui, Arial; margin: 18px; }
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 3 columns wide */
+  gap: 12px;
+  align-items: start;
+}
+
+/* Each scenario card groups the inputs for one scenario */
+.scenario-card {
+  border: 1px solid #ddd;
+  padding: 10px;
+  border-radius: 6px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scenario-card .title {
+  font-weight: 600;
+  font-size: 14px;
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  align-items:center;
+}
+
+.row { display:flex; align-items:center; gap:8px; }
+.row label { min-width: 48px; font-size:13px; }
+input[type="range"] { width: 120px; }
+input[type="text"] { flex:1; padding:6px; box-sizing:border-box; }
+
+.controls { margin-top: 14px; display:flex; gap:10px; align-items:center; }
+#output { margin-top: 18px; }
+.status { color:#666; margin-left:8px; }
