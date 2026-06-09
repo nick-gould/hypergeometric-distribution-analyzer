@@ -16,6 +16,30 @@ const defaults = [
   ['Scenario 8',1,5],
 ];
 
+function saveState(){
+  const state = gatherInputs();
+  localStorage.setItem('hypergeom-state', JSON.stringify(state));
+}
+
+function loadState(){
+  const saved = localStorage.getItem('hypergeom-state');
+  if(!saved) return;
+  try {
+    const state = JSON.parse(saved);
+    document.getElementById('populationSize').value = state.populationSize;
+    state.scenarios.forEach((scenario, i) => {
+      const idx = i + 1;
+      document.getElementById(`name_${idx}`).value = scenario[0];
+      document.getElementById(`count_${idx}`).value = scenario[1];
+      document.getElementById(`countVal_${idx}`).textContent = scenario[1];
+      document.getElementById(`draw_${idx}`).value = scenario[2];
+      document.getElementById(`drawVal_${idx}`).textContent = scenario[2];
+    });
+  } catch(e) {
+    console.error('Failed to load saved state:', e);
+  }
+}
+
 function makeCard(i, name, count, draw){
   const card = document.createElement('div');
   card.className = 'scenario-card';
@@ -26,6 +50,7 @@ function makeCard(i, name, count, draw){
   nameInput.type = 'text';
   nameInput.value = name;
   nameInput.id = `name_${i}`;
+  nameInput.addEventListener('change', saveState);
   title.appendChild(nameInput);
   card.appendChild(title);
 
@@ -40,6 +65,7 @@ function makeCard(i, name, count, draw){
   const countVal = document.createElement('span');
   countVal.id = `countVal_${i}`; countVal.textContent = count;
   countRange.addEventListener('input', ()=> countVal.textContent = countRange.value);
+  countRange.addEventListener('change', saveState);
   countRow.append(countLabel, countRange, countVal);
   card.appendChild(countRow);
 
@@ -54,6 +80,7 @@ function makeCard(i, name, count, draw){
   const drawVal = document.createElement('span');
   drawVal.id = `drawVal_${i}`; drawVal.textContent = draw;
   drawRange.addEventListener('input', ()=> drawVal.textContent = drawRange.value);
+  drawRange.addEventListener('change', saveState);
   drawRow.append(drawLabel, drawRange, drawVal);
   card.appendChild(drawRow);
 
@@ -64,6 +91,9 @@ for (let i=0; i<8; i++){
   const [n,c,d] = defaults[i];
   makeCard(i+1, n, c, d);
 }
+
+loadState();
+document.getElementById('populationSize').addEventListener('change', saveState);
 
 let pyodide = null;
 
@@ -136,4 +166,5 @@ resetBtn.addEventListener('click', ()=>{
   }
   document.getElementById('populationSize').value = 40;
   output.innerHTML = '';
+  localStorage.removeItem('hypergeom-state');
 });
