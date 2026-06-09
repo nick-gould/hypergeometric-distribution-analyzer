@@ -13,17 +13,142 @@ const defaults = [
   ['Scenario 5',8,5],
   ['Scenario 6',5,5],
   ['Scenario 7',3,5],
-  ['Scenario 8',1,5],
+  ['Scenario 8',2,5],
+  ['Scenario 9',1,5],
 ];
+
+// Storage abstraction layer with IndexedDB fallback
+const Storage = (() => {
+  let useIndexedDB = false;
+  let dbReady = false;
+  
+  const isLocalStorageAvailable = () => {
+    try {
+      const test = '__storage_test__';
+      localStorage.setItem(test, test);
+      localStorage.removeItem(test);
+      return true;
+    } catch(e) {
+      return false;
+    }
+  };
+  
+  const initIndexedDB = () => {
+    return new Promise((resolve) => {
+      const request = indexedDB.open('HypergeomDB', 1);
+      request.onerror = () => resolve(false);
+      request.onsuccess = () => resolve(true);
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('state')) {
+          db.createObjectStore('state');
+        }
+      };
+    });
+  };
+  
+  const getFromIndexedDB = (key) => {
+    return new Promise((resolve) => {
+      const request = indexedDB.open('HypergeomDB', 1);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('state', 'readonly');
+        const store = tx.objectStore('state');
+        const getReq = store.get(key);
+        getReq.onsuccess = () => resolve(getReq.result || null);
+        getReq.onerror = () => resolve(null);
+      };
+      request.onerror = () => resolve(null);
+    });
+  };
+  
+  const setInIndexedDB = (key, value) => {
+    return new Promise((resolve) => {
+      const request = indexedDB.open('HypergeomDB', 1);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('state', 'readwrite');
+        const store = tx.objectStore('state');
+        store.put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      };
+      request.onerror = () => resolve();
+    });
+  };
+  
+  const removeFromIndexedDB = (key) => {
+    return new Promise((resolve) => {
+      const request = indexedDB.open('HypergeomDB', 1);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('state', 'readwrite');
+        const store = tx.objectStore('state');
+        store.delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      };
+      request.onerror = () => resolve();
+    });
+  };
+  
+  // Initialize on module load
+  (async () => {
+    if (!isLocalStorageAvailable()) {
+      useIndexedDB = await initIndexedDB();
+      dbReady = true;
+    }
+  })();
+  
+  return {
+    setItem: (key, value) => {
+      if (isLocalStorageAvailable()) {
+        try { localStorage.setItem(key, value); }
+        catch(e) { setInIndexedDB(key, value); }
+      } else if (useIndexedDB || dbReady) {
+        setInIndexedDB(key, value);
+      }
+    },
+    getItem: (key) => {
+      if (isLocalStorageAvailable()) {
+        try { return localStorage.getItem(key); }
+        catch(e) { return getFromIndexedDB(key); }
+      } else if (useIndexedDB || dbReady) {
+        // For sync interface, return null immediately; caller must handle async
+        return null;
+      }
+      return null;
+    },
+    getItemAsync: getFromIndexedDB,
+    removeItem: (key) => {
+      if (isLocalStorageAvailable()) {
+        try { localStorage.removeItem(key); }
+        catch(e) { removeFromIndexedDB(key); }
+      } else if (useIndexedDB || dbReady) {
+        removeFromIndexedDB(key);
+      }
+    }
+  };
+})();
 
 function saveState(){
   const state = gatherInputs();
-  localStorage.setItem('hypergeom-state', JSON.stringify(state));
+  Storage.setItem('hypergeom-state', JSON.stringify(state));
 }
 
 function loadState(){
-  const saved = localStorage.getItem('hypergeom-state');
-  if(!saved) return;
+  const saved = Storage.getItem('hypergeom-state');
+  if(saved) {
+    applyLoadedState(saved);
+  } else if (typeof indexedDB !== 'undefined') {
+    // Try async IndexedDB if sync localStorage failed
+    Storage.getItemAsync('hypergeom-state').then(data => {
+      if(data) applyLoadedState(data);
+    });
+  }
+}
+
+function applyLoadedState(saved){
   try {
     const state = JSON.parse(saved);
     document.getElementById('populationSize').value = state.populationSize;
@@ -87,7 +212,7 @@ function makeCard(i, name, count, draw){
   container.appendChild(card);
 }
 
-for (let i=0; i<8; i++){
+for (let i=0; i<9; i++){
   const [n,c,d] = defaults[i];
   makeCard(i+1, n, c, d);
 }
@@ -118,7 +243,7 @@ loadPyodideAndPackages().catch(e=>{
 function gatherInputs(){
   const scenarios = [];
   const populationSize = parseInt(document.getElementById('populationSize').value)||40;
-  for (let i=1;i<=8;i++){
+  for (let i=1;i<=9;i++){
     const name = document.getElementById(`name_${i}`).value || `Scenario ${i}`;
     const count = parseInt(document.getElementById(`count_${i}`).value)||0;
     const draw = parseInt(document.getElementById(`draw_${i}`).value)||0;
@@ -127,13 +252,42 @@ function gatherInputs(){
   return {populationSize, scenarios};
 }
 
+function percentToColor(percent) {
+  // Accept percent in 0-100 or fraction 0-1. Clamp to [0,1].
+  let p = parseFloat(percent);
+  if (Number.isNaN(p)) p = 0;
+  if (p <= 1) p = p;        // treat as fraction 0-1
+  else p = p / 100;         // treat as percent 0-100 -> fraction
+  p = Math.max(0, Math.min(1, p));
+
+  // Interpolate between Yellow (255,255,0) and Green (0,128,0)
+  const r = Math.round(255 * (1 - p) + 0 * p);
+  const g = Math.round(255 * (1 - p) + 128 * p);
+  const b = 0;
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function renderPlotlyTable(columns, rows){
   const headerValues = columns;
   const cellValues = columns.map((_, colIdx) => rows.map(row=>row[colIdx]));
+  const percentColumns = new Set(['0', '1', '2', '3', '1+', '1-2', '2+']);
+  
+  // Build cell colors based on whether the header is a percentage column
+  const cellColors = columns.map((column, colIdx) => {
+    if (!percentColumns.has(column)) {
+      return cellValues[colIdx].map(() => '#ffffff');
+    }
+    return cellValues[colIdx].map(val => percentToColor(val));
+  });
+  
   const data = [{
     type: 'table',
     header: { values: headerValues, align: 'center', fill: {color: '#eee'} },
-    cells: { values: cellValues, align: 'center' }
+    cells: { 
+      values: cellValues, 
+      align: 'center',
+      fill: { color: cellColors }
+    }
   }];
   Plotly.newPlot(output, data, {margin:{t:10,b:10}});
 }
@@ -147,6 +301,7 @@ runBtn.addEventListener('click', async ()=>{
     const arg = JSON.stringify(payload);
     const resultJson = await pyodide.runPythonAsync(`compute_json(r'''${arg}''')`);
     const parsed = JSON.parse(resultJson);
+    console.log(parsed);
     renderPlotlyTable(parsed.columns, parsed.rows);
     status.textContent = 'Done.';
   } catch (err) {
@@ -156,7 +311,7 @@ runBtn.addEventListener('click', async ()=>{
 });
 
 resetBtn.addEventListener('click', ()=>{
-  for (let i=0;i<8;i++){
+  for (let i=0;i<9;i++){
     const [n,c,d] = defaults[i];
     document.getElementById(`name_${i+1}`).value = n;
     document.getElementById(`count_${i+1}`).value = c;
@@ -166,5 +321,5 @@ resetBtn.addEventListener('click', ()=>{
   }
   document.getElementById('populationSize').value = 40;
   output.innerHTML = '';
-  localStorage.removeItem('hypergeom-state');
+  Storage.removeItem('hypergeom-state');
 });
