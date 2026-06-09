@@ -24,6 +24,6 @@ def compute_json(payload_json: str) -> str:
                      f"{p0:.1f}", f"{p1:.1f}", f"{p2:.1f}", f"{p3:.1f}",
                      f"{p1plus:.1f}", f"{p1to2:.1f}", f"{p2plus:.1f}"])
 
-    cols = ['Scenario', 'Count', 'Count %', 'Draw', '0', '1', '2', '3', '1+', '1-2', '2+']
+    cols = ['Scenario', 'Count', 'Fraction of Population', 'Draw', '0', '1', '2', '3', '1+', '1-2', '2+']
     result = {'columns': cols, 'rows': rows}
     return json.dumps(result)
